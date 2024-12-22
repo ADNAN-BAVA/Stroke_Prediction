@@ -3,8 +3,6 @@
 [![R](https://img.shields.io/badge/Made%20with-R-blue?style=flat&logo=R&logoColor=white)](https://cran.r-project.org/)  
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](https://opensource.org/licenses/MIT)  
 [![Build Status](https://img.shields.io/badge/Status-Completed-brightgreen?style=flat&logo=check)](#)  
-![GitHub repo size](https://img.shields.io/github/repo-size/<your-username>/<repo-name>?style=flat&logo=github)  
-![GitHub last commit](https://img.shields.io/github/last-commit/<your-username>/<repo-name>?style=flat)  
 
 ## 🖍️ Overview  
 
@@ -53,3 +51,12 @@ The dataset contains demographic and medical attributes such as age, BMI, glucos
 
 ## 📜 License  
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Contact  
+
+For inquiries or collaboration, please feel free to reach out:  
+- **Email**: adnan.bava123@gmail.com  
+  
+---
