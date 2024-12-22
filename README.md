@@ -1,8 +1,6 @@
 # 🧠 Stroke Prediction using Machine Learning in R  
 
-[![R](https://img.shields.io/badge/Made%20with-R-blue?style=flat&logo=R&logoColor=white)](https://cran.r-project.org/)  
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](https://opensource.org/licenses/MIT)  
-[![Build Status](https://img.shields.io/badge/Status-Completed-brightgreen?style=flat&logo=check)](#)  
+[![R](https://img.shields.io/badge/Made%20with-R-blue?style=flat&logo=R&logoColor=white)](https://cran.r-project.org/)  [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](https://opensource.org/licenses/MIT)  [![Build Status](https://img.shields.io/badge/Status-Completed-brightgreen?style=flat&logo=check)](#)  
 
 ## 🖍️ Overview  
 
