@@ -1,0 +1,1015 @@
+---
+title: "Assignment"
+author: "Mohammad Adnan"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Library
+```{r}
+library(rpart)
+library(rpart.plot)
+#library(data.tree)
+library(caTools)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+#library(RColorBrewer)
+library(ROSE)
+library(caret)
+#library(olsrr)
+#library(cvms)
+library(tibble) 
+library(MASS)
+library(pROC)
+#library(DescTools)
+library(factoextra)
+library(DataExplorer)
+```
+
+```{r}
+df <- read.csv("C:\\Users\\adnan\\OneDrive\\Desktop\\healthcare-dataset-stroke-data.csv")
+
+data1 <- df
+```
+
+# IDA
+```{r}
+introduce(data1)
+summary(data1)
+glimpse(data1)
+```
+
+#EDA
+```{r}
+ggplot(data1, aes(x = factor(stroke))) +
+  geom_bar(aes(y = (after_stat(count))/sum(after_stat(count)), fill = factor(stroke))) +
+  geom_text(stat = 'count', aes(label = scales::percent((after_stat(count))/sum(after_stat(count))),
+            y = ((after_stat(count))/sum(after_stat(count)))), vjust = -0.5) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  labs(title = "Occurrence of Stroke (0: No, 1: Yes)",
+       x = "Stroke",
+       y = "Percentage") +
+  theme_minimal()
+```
+
+```{r}
+plot_bar(data1)
+plot_density(data1)
+plot_qq(data1)
+plot_boxplot(data1, 'stroke' )
+```
+
+
+## Missing Value
+```{r}
+data1$bmi <- as.numeric(data1$bmi)
+plot_missing(data1)
+
+```
+
+# Imputintg Mean
+```{r}
+data1$bmi[is.na(data1$bmi)] <- mean(data1$bmi,na.rm=TRUE)
+plot_missing(data1)
+
+plot_bar(data1$gender)
+data1$gender <- ifelse(data1$gender == "Other", "Female", data1$gender)
+```
+## Smoking Status
+```{r}
+table(data1$smoking_status)
+# Calculate the probability of formerly smoker, current smokers and non-smokers given that there's only this three categories in the smoking_status column
+prob.FS <- 885 / (885 + 1892 + 789)
+prob.NS <- 1892 / (885 + 1892 + 789)
+prob.S <- 789 / (885 + 1892 + 789)
+
+# Duplicate the data
+data2 <- data1
+
+plot_bar(data2$smoking_status)
+```
+
+
+```{r}
+data2$rand <- runif(nrow(data2))
+data2 <- data2%>%mutate(Probability = ifelse(rand <= prob.FS, "formerly smoked", ifelse(rand <= (prob.FS+prob.NS), "never smoked", ifelse(rand <= 1, "smokes", "Check"))))
+data2 <- data2%>%mutate(smoking.status = ifelse(smoking_status == "Unknown", Probability, smoking_status))
+# View the new Smoking Status column's unique values and their counts
+table(data2$smoking.status)
+```
+
+```{r}
+# Remove columns that are not needed
+stroke_ds <- subset(data2, select = -c(rand,Probability,smoking_status))
+# revise the column name of smoking status
+colnames(stroke_ds)[12] <- "smoking_status"
+# 'health' is the final modified dataset which will be used for the EDA section below.
+plot_bar(stroke_ds$smoking_status)
+```
+
+```{r}
+# Change ID to Null
+class(stroke_ds$id)
+## [1] "integer"
+stroke_ds$id <- NULL
+```
+
+```{r}
+library(caret)
+library(corrr)
+library(rpart)
+library(rpart.plot)
+
+# Convert the Categorical Variables to Numerical Variables
+# The new dataset is named as onehot
+dmy <- dummyVars(" ~ .", data = stroke_ds)
+onehot <- data.frame(predict(dmy, newdata = stroke_ds))
+# View the headers of the new dataset
+names(onehot)
+
+# Correlation Table
+cor_onehot <- correlate(onehot)
+
+cor_onehot%>% focus(stroke)
+
+# Plot the correlation between stroke and all others
+cor_onehot %>%
+  focus(stroke) %>%
+  mutate(rowname = reorder(term, stroke)) %>%
+  ggplot(aes(term, stroke)) +
+    geom_col() + coord_flip() +
+  theme_bw()
+
+plot_correlation(stroke_ds)
+```
+## Data Modeling
+```{r}
+stroke_ds$gender <- as.factor(stroke_ds$gender)
+stroke_ds$stroke <- as.factor(stroke_ds$stroke)
+table(stroke_ds$stroke)
+```
+
+## Dummy
+```{r}
+library(fastDummies)
+# Duplicate Data
+dummy <- stroke_ds
+# Creating dummy columns
+dummy <- dummy_cols(dummy,select_columns=c("gender","ever_married",
+                          "work_type","Residence_type","smoking_status"),
+                          remove_selected_columns = TRUE)
+
+# View a summary of the data
+summary(dummy)
+```
+
+```{r}
+dummy$stroke <- ifelse(dummy$stroke == '1', 1, 0)
+table(dummy$stroke)
+```
+## Preprocessed File
+```{r}
+ds_1 <- read.csv("C:\\Users\\adnan\\OneDrive\\Desktop\\APU\\Msc. Data Science & Buisness Analytics\\AML\\AML Lab Ex\\Dataset\\preprocessed_stroke_dataset.csv")
+
+```
+
+## Splitting Original Data
+```{r}
+set.seed(123)
+split = sample.split(ds_1$stroke, SplitRatio = 0.7)
+train = subset(ds_1, split == TRUE)
+test = subset(ds_1, split == FALSE)
+str(train)
+```
+
+
+## Splitting Original Dataset
+```{r}
+set.seed(100)
+stroke_ds$AgeGroup <-NULL
+sample = sample.split(stroke_ds$stroke, SplitRatio = 0.7)
+train = subset(stroke_ds, sample==TRUE)
+test = subset(stroke_ds, sample==FALSE)
+stroke_ds$gender <- as.factor(stroke_ds$gender)
+table(stroke_ds$stroke)
+```
+
+# Random Forest
+```{r}
+library(randomForest)
+Random_Forest_Model <- randomForest(stroke~., data=train, ntree=500)
+Random_Forest_Model
+```
+```{r}
+# Confusion Matrix and Statistics
+pred_prob_training <- predict(Random_Forest_Model, train, type='class')
+confusionMatrix(pred_prob_training, train$stroke)
+```
+
+```{r}
+pred_prob_test <- predict(Random_Forest_Model, test, type='class')
+confusionMatrix(pred_prob_test, test$stroke)
+
+```
+
+## F1 score and Error Rate of Random Forest Original
+```{r}
+# Extract the confusion matrix object
+conf_matrix <- confusionMatrix(pred_prob_training, train$stroke)
+conf_matrix2 <- confusionMatrix(pred_prob_test, test$stroke)
+
+#Calculate Accuracy
+accuracy <-conf_matrix$overall['Accuracy']
+
+# Calculate F1 score
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Calculate Error Rate
+error_rate <- 1 - conf_matrix$overall['Accuracy']
+```
+
+```{r}
+#Calculate Accuracy for Test
+accuracy_test <-conf_matrix2$overall['Accuracy']
+
+# Calculate F1 score for Test
+precision_test <- conf_matrix2$byClass['Pos Pred Value']
+recall_test <- conf_matrix$byClass['Sensitivity']
+f1_score_test <- 2 * (precision * recall) / (precision + recall)
+
+# Calculate Error Rate
+error_rate_test <- 1 - conf_matrix2$overall['Accuracy']
+
+# Print the results
+cat("Accuracy(Trainning Set):",round(accuracy,4),"\n")
+cat("F1 Score(Trainning Set):", round(f1_score, 4), "\n")
+cat("Error Rate(Trainning Set):", round(error_rate, 4), "\n")
+
+cat("Accuracy(Test Set):",round(accuracy_test,4),"\n")
+cat("F1 Score(Test Set):", round(f1_score_test, 4), "\n")
+cat("Error Rate(Test Set):", round(error_rate_test, 4), "\n")
+
+```
+
+## ROC and AUC of Base RF
+```{r}
+library(pROC)
+
+# Assuming test_os is your test dataset and probabilities.test_os is the predicted probabilities
+pred_prob_test <- as.numeric(pred_prob_test)
+roc_curve <- roc(test$stroke, pred_prob_test, levels = c('0', '1'))
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve - Random Forest Base", lwd = 1)
+
+# Add AUC to the plot
+auc_value <- auc(roc_curve)
+text(0.8, 0.2, paste("AUC =", round(auc_value, 3)), col = "black", cex = 1.2)
+
+# Calculate AUC directly
+print(paste("AUC =", round(auc_value, 3)))
+```
+
+## Oversampling data
+
+```{r}
+stroke_ds$AgeGroup <- NULL
+stroke_ds_oversample <- ovun.sample(stroke~.,data = stroke_ds, method = 'over',p = 0.43)$data
+
+oversampletable <- as.data.frame(table(stroke_ds_oversample$stroke))
+regularsampletable <- as.data.frame(table(stroke_ds$stroke))
+```
+
+## Loading Oversampled Data
+```{r}
+ds_over1 <-  read.csv("C:\\Users\\adnan\\OneDrive\\Desktop\\APU\\Msc. Data Science & Buisness Analytics\\AML\\AML Lab Ex\\Dataset\\preprocessed_SMOTE_stroke_dataset.csv")
+```
+
+```{r}
+ggplot(ds_over1, aes(x = factor(stroke))) +
+  geom_bar(aes(y = (after_stat(count))/sum(after_stat(count)), fill = factor(stroke))) +
+  geom_text(stat = 'count', aes(label = scales::percent((after_stat(count))/sum(after_stat(count))),
+            y = ((after_stat(count))/sum(after_stat(count)))), vjust = -0.5) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  labs(title = "Occurrence of Stroke (0: No, 1: Yes)",
+       x = "Stroke",
+       y = "Percentage") +
+  theme_minimal()
+```
+
+
+## Splitting OS Data
+```{r}
+set.seed(123)
+split = sample.split(ds_over1$stroke, SplitRatio = 0.7)
+train_os = subset(ds_over1, split == TRUE)
+test_os = subset(ds_over1, split == FALSE)
+```
+
+## Split OS
+```{r}
+set.seed(100)
+stroke_ds_oversample$AgeGroup <-NULL
+sample_os = sample.split(stroke_ds_oversample$stroke, SplitRatio = 0.7)
+train_os = subset(stroke_ds_oversample, sample==TRUE)
+test_os = subset(stroke_ds_oversample, sample==FALSE)
+stroke_ds_oversample$gender <- as.factor(stroke_ds_oversample$gender)
+table(stroke_ds_oversample$stroke)
+```
+
+```{r}
+RF_Model_os <- randomForest(stroke~., data=train_os, ntree=500)
+RF_Model_os
+```
+
+```{r}
+pred_prob_training <- predict(RF_Model_os, train_os, type='class')
+confusionMatrix(pred_prob_training, train_os$stroke)
+```
+
+```{r}
+pred_prob_test <- predict(RF_Model_os, test_os, type='class')
+confusionMatrix(pred_prob_test, test_os$stroke)
+```
+
+## F1 score and Error Rate of Random Forest Oversampled
+```{r}
+# Extract the confusion matrix object
+conf_matrix <- confusionMatrix(pred_prob_training, train_os$stroke)
+conf_matrix2 <- confusionMatrix(pred_prob_test, test_os$stroke)
+
+#Calculate Accuracy
+accuracy <-conf_matrix$overall['Accuracy']
+
+# Calculate F1 score
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Calculate Error Rate
+error_rate <- 1 - conf_matrix$overall['Accuracy']
+```
+
+```{r}
+#Calculate Accuracy for Test
+accuracy_test <-conf_matrix2$overall['Accuracy']
+
+# Calculate F1 score for Test
+precision_test <- conf_matrix2$byClass['Pos Pred Value']
+recall_test <- conf_matrix$byClass['Sensitivity']
+f1_score_test <- 2 * (precision * recall) / (precision + recall)
+
+# Calculate Error Rate
+error_rate_test <- 1 - conf_matrix2$overall['Accuracy']
+
+# Print the results
+cat("Accuracy(Trainning Set):",round(accuracy,4),"\n")
+cat("F1 Score(Trainning Set):", round(f1_score, 4), "\n")
+cat("Error Rate(Trainning Set):", round(error_rate, 4), "\n")
+
+cat("Accuracy(Test Set):",round(accuracy_test,4),"\n")
+cat("F1 Score(Test Set):", round(f1_score_test, 4), "\n")
+cat("Error Rate(Test Set):", round(error_rate_test, 4), "\n")
+
+```
+
+## ROC and AUC Oversample
+```{r warning=FALSE}
+library(pROC)
+
+# Assuming test_os is your test dataset and probabilities.test_os is the predicted probabilities
+pred_prob_test <- as.numeric(pred_prob_test)
+
+roc_curve <- roc(test_os$stroke, pred_prob_test, levels = c('0', '1'))
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve - Random Forest Oversampled", lwd = 1)
+
+# Add AUC to the plot
+auc_value <- auc(roc_curve)
+text(0.8, 0.2, paste("AUC =", round(auc_value, 3)), col = "black", cex = 1.2)
+
+# Calculate AUC directly
+print(paste("AUC =", round(auc_value, 3)))
+```
+### Hyperparameter Tuning Random Forest
+```{r}
+control <- trainControl(method = "repeatedcv", number = 5, repeats = 3, search = "grid")
+
+# Define the grid of hyperparameters to search over
+tunegrid <- expand.grid(.mtry = c(2:8)) 
+
+# Train the random forest model using grid search for hyperparameter tuning
+set.seed(123)
+rf_model <- train(stroke~., data = train_os, method = "rf", metric = "Accuracy",
+                 tuneGrid = tunegrid, trControl = control)
+
+# Print the best model
+print(rf_model)
+```
+
+```{r}
+# Predict on training set
+train_pred <- predict(rf_model, newdata = train)
+confusionMatrix(train_pred,train$stroke)
+
+# Predict on test set
+test_pred <- predict(rf_model, newdata = test_os)
+confusionMatrix(test_pred,test_os$stroke)
+
+```
+
+## F1 score and Error Rate of Random Forest Tuned
+```{r}
+# Extract the confusion matrix object
+conf_matrix <- confusionMatrix(train_pred, train$stroke)
+conf_matrix2 <- confusionMatrix(test_pred, test_os$stroke)
+
+#Calculate Accuracy
+accuracy <-conf_matrix$overall['Accuracy']
+
+# Calculate F1 score
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Calculate Error Rate
+error_rate <- 1 - conf_matrix$overall['Accuracy']
+
+#Calculate Accuracy for Test
+accuracy_test <-conf_matrix2$overall['Accuracy']
+
+# Calculate F1 score for Test
+precision_test <- conf_matrix2$byClass['Pos Pred Value']
+recall_test <- conf_matrix$byClass['Sensitivity']
+f1_score_test <- 2 * (precision * recall) / (precision + recall)
+
+# Calculate Error Rate
+error_rate_test <- 1 - conf_matrix2$overall['Accuracy']
+
+# Print the results
+cat("Accuracy(Trainning Set):",round(accuracy,4),"\n")
+cat("F1 Score(Trainning Set):", round(f1_score, 4), "\n")
+cat("Error Rate(Trainning Set):", round(error_rate, 4), "\n")
+
+cat("Accuracy(Test Set):",round(accuracy_test,4),"\n")
+cat("F1 Score(Test Set):", round(f1_score_test, 4), "\n")
+cat("Error Rate(Test Set):", round(error_rate_test, 4), "\n")
+
+```
+## ROC and AUC Tuned RF
+```{r}
+library(pROC)
+
+test_pred <- predict(rf_model, newdata = test_os)
+confusionMatrix(test_pred,test_os$stroke)
+
+test_pred <- as.numeric(test_pred)
+
+roc_curve <- roc(test_os$stroke, test_pred, levels = c('0', '1'))
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve - Random Forest Tuned", lwd = 1)
+
+# Add AUC to the plot
+auc_value <- auc(roc_curve)
+text(0.8, 0.2, paste("AUC =", round(auc_value, 3)), col = "black", cex = 1.2)
+
+# Calculate AUC directly
+print(paste("AUC =", round(auc_value, 3)))
+```
+
+
+```{r}
+# Evaluate accuracy on training set
+train_accuracy <- sum(train_pred == train$stroke) / nrow(train)
+print(paste("Training Set Accuracy:", train_accuracy))
+
+# Evaluate accuracy on test set
+test_accuracy <- sum(test_pred == test_os$stroke) / nrow(test_os)
+print(paste("Test Set Accuracy:", test_accuracy))
+
+test_pred <- as.numeric(test_pred)
+test_class <- ifelse(test_pred > 0.5, 1, 0)
+
+```
+# SVM
+
+```{r}
+set.seed(123)
+split = sample.split(ds_1$stroke, SplitRatio = 0.7)
+training_set = subset(ds_1, split == TRUE)
+test_set = subset(ds_1, split == FALSE)
+```
+
+
+```{r}
+library(e1071)
+# Train the default SVM model with RBF kernel
+svm_model <- svm(stroke~ ., data = train)
+ 
+# Predictions on the training set
+train_predictions <- predict(svm_model, newdata = train)
+ 
+# Evaluate performance on the training set
+train_confusion <- confusionMatrix(train_predictions, train$stroke)
+print("Training Set Confusion Matrix:")
+print(train_confusion)
+ 
+# Calculate training set accuracy
+train_accuracy <- train_confusion$overall["Accuracy"]
+print(paste("Training Set Accuracy:", train_accuracy))
+
+F1_Score <- function(confusion_matrix) {
+  # Extract true positives (TP), false positives (FP), and false negatives (FN) from the confusion matrix
+  TP <- confusion_matrix[2, 2]
+  FP <- confusion_matrix[1, 2]
+  FN <- confusion_matrix[2, 1]
+  # Calculate precision and recall
+  precision <- TP / (TP + FP)
+  recall <- TP / (TP + FN)
+  # Calculate the F1 score
+  F1 <- 2 * precision * recall / (precision + recall)
+  return(F1)
+}
+ 
+# Calculate F1 score for the training set
+F1_train <- F1_Score(train_confusion$table)
+print(paste("F1 Score (Training Set):", F1_train))
+ 
+# Calculate error rate for the training set
+error_rate_train <- 1 - train_accuracy
+print(paste("Error Rate (Training Set):", error_rate_train))
+```
+
+```{r}
+# Predictions on the test set
+test_predictions <- predict(svm_model, newdata = test)
+ 
+# Evaluate performance on the test set
+test_confusion <- confusionMatrix(test_predictions, test$stroke)
+print("Test Set Confusion Matrix:")
+print(test_confusion)
+ 
+# Calculate test set accuracy
+test_accuracy <- test_confusion$overall["Accuracy"]
+print(paste("Test Set Accuracy:", test_accuracy))
+ 
+# Calculate F1 score for the test set
+F1_test <- F1_Score(test_confusion$table)
+print(paste("F1 Score (Test Set):", F1_test))
+ 
+# Calculate error rate for the test set
+error_rate_test <- 1 - test_accuracy
+print(paste("Error Rate (Test Set):", error_rate_test))
+```
+## ROC and AUC SVM
+```{r}
+library(e1071)
+library(ROCR)
+ 
+# Train the default SVM model with RBF kernel
+svm_model <- svm(stroke ~ ., data = train, probability = TRUE)
+ 
+# Predictions on the test set with probabilities
+test_pred_prob <- predict(svm_model, newdata = test, probability = TRUE)
+ 
+# Create prediction object
+pred_obj <- prediction(attr(test_pred_prob, "probabilities")[,2], test$stroke)
+ 
+# Calculate performance measures
+perf <- performance(pred_obj, "tpr", "fpr")
+auc <- performance(pred_obj, "auc")
+ 
+# Plot ROC curve
+plot(perf, main = "ROC Curve - SVM Base Model (RBF Kernel)")
+abline(a = 0, b = 1, lty = 2)  # Diagonal line representing random classifier
+ 
+# Print AUC
+print(paste("AUC:", as.numeric(auc@y.values)))
+```
+
+## Oversampled SVM
+```{r}
+# Train the default SVM model with RBF kernel
+svm_model <- svm(stroke~ ., data = train_os)
+ 
+# Predictions on the training set
+train_predictions <- predict(svm_model, newdata = train_os)
+ 
+# Evaluate performance on the training set
+train_confusion <- confusionMatrix(train_predictions, train_os$stroke)
+print("Training Set Confusion Matrix:")
+print(train_confusion)
+ 
+# Calculate training set accuracy
+train_accuracy <- train_confusion$overall["Accuracy"]
+print(paste("Training Set Accuracy:", train_accuracy))
+ 
+# Calculate F1 score for the training set
+F1_train <- F1_Score(train_confusion$table)
+print(paste("F1 Score (Training Set):", F1_train))
+ 
+# Calculate error rate for the training set
+error_rate_train <- 1 - train_accuracy
+print(paste("Error Rate (Training Set):", error_rate_train))
+ 
+# Predictions on the test set
+test_predictions <- predict(svm_model, newdata = test_os)
+```
+
+```{r}
+# Evaluate performance on the test set
+test_confusion <- confusionMatrix(test_predictions, test_os$stroke)
+print("Test Set Confusion Matrix:")
+print(test_confusion)
+ 
+# Calculate test set accuracy
+test_accuracy <- test_confusion$overall["Accuracy"]
+print(paste("Test Set Accuracy:", test_accuracy))
+ 
+# Calculate F1 score for the test set
+F1_test <- F1_Score(test_confusion$table)
+print(paste("F1 Score (Test Set):", F1_test))
+ 
+# Calculate error rate for the test set
+error_rate_test <- 1 - test_accuracy
+print(paste("Error Rate (Test Set):", error_rate_test))
+```
+
+## ROC and AUC Oversampled SVM
+```{r}
+library(ROCR)
+ 
+# Train the default SVM model with RBF kernel
+svm_model <- svm(stroke ~ ., data = train_os, probability = TRUE)
+ 
+# Predictions on the test set with probabilities
+test_pred_prob <- predict(svm_model, newdata = test_os, probability = TRUE)
+ 
+# Create prediction object
+pred_obj <- prediction(attr(test_pred_prob, "probabilities")[,2], test_os$stroke)
+ 
+# Calculate performance measures
+perf <- performance(pred_obj, "tpr", "fpr")
+auc <- performance(pred_obj, "auc")
+ 
+# Plot ROC curve
+plot(perf, main = "ROC Curve - SVM Oversampled Model (RBF Kernel)")
+abline(a = 0, b = 1, lty = 2)  # Diagonal line representing random classifier
+ 
+# Print AUC
+print(paste("AUC:", as.numeric(auc@y.values)))
+```
+
+
+## Hyperparameter Tuning SVM
+```{r}
+# Tune hyperparameters
+tuned_model <- tune(svm, stroke ~ ., data = train_os,
+                    ranges = list(epsilon = seq(0, 1, 0.1), cost = 2^(0:2), kernel = c("radial", "linear", "poly")))
+summary(tuned_model)
+``` 
+
+```{r}
+# Get the best model
+best_model <- tuned_model$best.model
+summary(best_model)
+```
+
+
+```{r} 
+# Extract best hyperparameters
+best_epsilon <- tuned_model$best.parameters$epsilon
+best_cost <- tuned_model$best.parameters$cost
+best_kernel <- tuned_model$best.parameters$kernel
+ 
+# Train the best model
+svm_best <- svm(stroke ~ ., data = train_os, 
+                epsilon = best_epsilon,
+                cost = best_cost,
+                kernel = best_kernel)
+ 
+# Summary of the best model
+summary(svm_best)
+ 
+# Make predictions on the training set
+train_predictions <- predict(svm_best, newdata = train_os)
+ 
+# Evaluate performance on the training set
+train_confusion_matrix <- table(train_predictions, train_os$stroke)
+print("Confusion Matrix (Training Set):")
+print(train_confusion_matrix)
+ 
+# Calculate training accuracy 
+train_accuracy <- sum(diag(train_confusion_matrix)) / sum(train_confusion_matrix)
+print(paste("Training Accuracy:", train_accuracy))
+ 
+# Calculate F1 score for training set
+F1_train <- F1_Score(train_confusion_matrix)
+print(paste("F1 Score (Training Set):", F1_train))
+ 
+# Calculate error rate for training set
+error_rate_train <- 1 - train_accuracy
+print(paste("Error Rate (Training Set):", error_rate_train))
+```
+
+```{r}
+# Make predictions on the test set
+test_predictions <- predict(svm_best, newdata = test_os)
+ 
+# Evaluate performance on the test set
+test_confusion_matrix <- table(test_predictions, test_os$stroke)
+print("Confusion Matrix (Test Set):")
+print(test_confusion_matrix)
+ 
+# Calculate test accuracy
+test_accuracy <- sum(diag(test_confusion_matrix)) / sum(test_confusion_matrix)
+print(paste("Test Accuracy:", test_accuracy))
+ 
+# Calculate F1 score for test set
+F1_test <- F1_Score(test_confusion_matrix)
+print(paste("F1 Score (Test Set):", F1_test))
+ 
+# Calculate error rate for test set
+error_rate_test <- 1 - test_accuracy
+print(paste("Error Rate (Test Set):", error_rate_test))
+ 
+# Calculate sensitivity for training set
+TP_train <- train_confusion_matrix[2, 2]
+FN_train <- train_confusion_matrix[2, 1]
+sensitivity_train <- TP_train / (TP_train + FN_train)
+print(paste("Sensitivity (Training Set):", sensitivity_train))
+ 
+# Calculate sensitivity for test set
+TP_test <- test_confusion_matrix[2, 2]
+FN_test <- test_confusion_matrix[2, 1]
+sensitivity_test <- TP_test / (TP_test + FN_test)
+print(paste("Sensitivity (Test Set):", sensitivity_test))
+```
+
+## ROC and AUC for Hyperparameter SVM
+```{r}
+library(e1071)
+library(ROCR)
+svm_best <- svm(stroke ~ ., data = train_os, 
+                epsilon = best_epsilon,
+                cost = best_cost,
+                kernel = best_kernel,
+                probability = TRUE)  # Enable probability estimates
+ 
+ 
+# Compute ROC curve and AUC
+test_pred_prob <- predict(svm_best, newdata = test, probability = TRUE)
+pred_obj <- prediction(attr(test_pred_prob, "probabilities")[,2], as.numeric(test$stroke)) # Ensure target is numeric
+perf <- performance(pred_obj, "tpr", "fpr")
+auc <- performance(pred_obj, "auc")
+ 
+# Plot ROC curve
+plot(perf, main = "ROC Curve - SVM Model (Tuned)")
+abline(a = 0, b = 1, lty = 2)  # Diagonal line representing random classifier
+ 
+# Print AUC
+print(paste("AUC:", as.numeric(auc@y.values)))
+```
+
+
+# Naive Bayes
+
+```{r}
+set.seed(123)
+split = sample.split(ds_1$stroke, SplitRatio = 0.7)
+training_set = subset(ds_1, split == TRUE)
+test_set = subset(ds_1, split == FALSE)
+```
+
+```{r}
+library(naivebayes)
+ 
+# Convert target variable to factor
+train$stroke <- as.factor(train$stroke)
+test$stroke <- as.factor(test$stroke)
+ 
+# Train the Naive Bayes model on the training set
+Naive_Bayes_model <- naive_bayes(x = train[, -10], # Excluding the target column
+                                  y = train$stroke,
+                                  laplace = 1)
+print(Naive_Bayes_model)
+```
+ 
+```{r}
+# Predict on the training set
+train_pred <- predict(Naive_Bayes_model, newdata = train[, -10], type = "class")
+ 
+# Create a confusion matrix for the training set
+train_confusion_matrix <- table(Actual = train$stroke, Predicted = train_pred)
+ 
+# Display the confusion matrix for the training set
+print("Confusion Matrix (Training Set):")
+print(train_confusion_matrix)
+ 
+# Calculate accuracy for the training set
+train_accuracy <- sum(diag(train_confusion_matrix)) / sum(train_confusion_matrix)
+print(paste("Accuracy (Training Set):", train_accuracy))
+ 
+# Calculate sensitivity for the training set
+TP_train <- train_confusion_matrix[2, 2]
+FN_train <- train_confusion_matrix[2, 1]
+sensitivity_train <- TP_train / (TP_train + FN_train)
+print(paste("Sensitivity (Training Set):", sensitivity_train))
+ 
+# Calculate F1 score for the training set
+precision_train <- TP_train / sum(train_pred == "1")
+F1_train <- (2 * precision_train * sensitivity_train) / (precision_train + sensitivity_train)
+print(paste("F1 Score (Training Set):", F1_train))
+ 
+# Calculate error rate for the training set
+error_rate_train <- 1 - train_accuracy
+print(paste("Error Rate (Training Set):", error_rate_train))
+```
+
+```{r}
+# Predict on the test set
+test_pred <- predict(Naive_Bayes_model, newdata = test[, -10], type = "class")
+ 
+# Create a confusion matrix for the test set
+test_confusion_matrix <- table(Actual = test$stroke, Predicted = test_pred)
+ 
+# Display the confusion matrix for the test set
+print("Confusion Matrix (Test Set):")
+print(test_confusion_matrix)
+ 
+# Calculate accuracy for the test set
+test_accuracy <- sum(diag(test_confusion_matrix)) / sum(test_confusion_matrix)
+print(paste("Accuracy (Test Set):", test_accuracy))
+ 
+# Calculate sensitivity for the test set
+TP_test <- test_confusion_matrix[2, 2]
+FN_test <- test_confusion_matrix[2, 1]
+sensitivity_test <- TP_test / (TP_test + FN_test)
+specificity <- 
+print(paste("Sensitivity (Test Set):", sensitivity_test))
+ 
+# Calculate F1 score for the test set
+precision_test <- TP_test / sum(test_pred == "1")
+F1_test <- (2 * precision_test * sensitivity_test) / (precision_test + sensitivity_test)
+print(paste("F1 Score (Test Set):", F1_test))
+ 
+# Calculate error rate for the test set
+error_rate_test <- 1 - test_accuracy
+print(paste("Error Rate (Test Set):", error_rate_test))
+
+```
+
+## ROC and AUC NB
+```{r}
+library(ROCR)
+ 
+# Convert target variable to factor
+train$stroke <- as.factor(train$stroke)
+test$stroke <- as.factor(test$stroke)
+ 
+# Train the Naive Bayes model on the training set
+Naive_Bayes_model <- naive_bayes(x = train[, -10], # Excluding the target column
+                                  y = train$stroke,
+                                  laplace = 1)
+ 
+# Predict probabilities on the test set
+test_pred_prob <- predict(Naive_Bayes_model, newdata = test[, -10], type = "prob")
+ 
+# Create prediction object
+pred_obj <- prediction(test_pred_prob[, "1"], test$stroke)
+ 
+# Calculate performance measures
+perf <- performance(pred_obj, "tpr", "fpr")
+auc <- performance(pred_obj, "auc")
+ 
+# Plot ROC curve
+plot(perf, main = "ROC Curve - Naive Bayes Model (Laplace = 1)")
+abline(a = 0, b = 1, lty = 2)  # Diagonal line representing random classifier
+ 
+# Print AUC
+print(paste("AUC (Laplace = 1):", as.numeric(auc@y.values)))
+```
+
+
+## Oversampled NB
+
+```{r}
+set.seed(123)
+split = sample.split(ds_over1$stroke, SplitRatio = 0.7)
+train_os = subset(ds_over1, split == TRUE)
+test_os = subset(ds_over1, split == FALSE)
+```
+
+```{r}
+# Convert target variable to factor
+train_os$stroke <- as.factor(train_os$stroke)
+test_os$stroke <- as.factor(test_os$stroke)
+ 
+# Train the Naive Bayes model on the training set
+Naive_Bayes_model <- naive_bayes(x = train_os[, -10], # Excluding the target column
+                                  y = train_os$stroke,
+                                  laplace = 1)
+ 
+# Predict on the training set
+train_pred <- predict(Naive_Bayes_model, newdata = train_os[, -10], type = "class")
+ 
+# Create a confusion matrix for the training set
+train_confusion_matrix <- table(Actual = train_os$stroke, Predicted = train_pred)
+ 
+# Display the confusion matrix for the training set
+print("Confusion Matrix (Training Set):")
+print(train_confusion_matrix)
+ 
+# Calculate accuracy for the training set
+train_accuracy <- sum(diag(train_confusion_matrix)) / sum(train_confusion_matrix)
+print(paste("Accuracy (Training Set):", train_accuracy))
+ 
+# Calculate sensitivity for the training set
+TP_train <- train_confusion_matrix[2, 2]
+FN_train <- train_confusion_matrix[2, 1]
+sensitivity_train <- TP_train / (TP_train + FN_train)
+print(paste("Sensitivity (Training Set):", sensitivity_train))
+ 
+# Calculate F1 score for the training set
+precision_train <- TP_train / sum(train_pred == "1")
+F1_train <- (2 * precision_train * sensitivity_train) / (precision_train + sensitivity_train)
+print(paste("F1 Score (Training Set):", F1_train))
+ 
+# Calculate error rate for the training set
+error_rate_train <- 1 - train_accuracy
+print(paste("Error Rate (Training Set):", error_rate_train))
+```
+```{r}
+# Predict on the test set
+test_pred <- predict(Naive_Bayes_model, newdata = test_os[, -10], type = "class")
+ 
+# Create a confusion matrix for the test set
+test_confusion_matrix <- table(Actual = test_os$stroke, Predicted = test_pred)
+ 
+# Display the confusion matrix for the test set
+print("Confusion Matrix (Test Set):")
+print(test_confusion_matrix)
+ 
+# Calculate accuracy for the test set
+test_accuracy <- sum(diag(test_confusion_matrix)) / sum(test_confusion_matrix)
+print(paste("Accuracy (Test Set):", test_accuracy))
+ 
+# Calculate sensitivity for the test set
+TP_test <- test_confusion_matrix[2, 2]
+FN_test <- test_confusion_matrix[2, 1]
+sensitivity_test <- TP_test / (TP_test + FN_test)
+print(paste("Sensitivity (Test Set):", sensitivity_test))
+ 
+# Calculate F1 score for the test set
+precision_test <- TP_test / sum(test_pred == "1")
+F1_test <- (2 * precision_test * sensitivity_test) / (precision_test + sensitivity_test)
+print(paste("F1 Score (Test Set):", F1_test))
+ 
+# Calculate error rate for the test set
+error_rate_test <- 1 - test_accuracy
+print(paste("Error Rate (Test Set):", error_rate_test))
+```
+
+## ROC and AUC for Oversampled NB
+
+```{r}
+library(ROCR)
+ 
+# Convert target variable to factor
+train_os$stroke <- as.factor(train_os$stroke)
+test_os$stroke <- as.factor(test_os$stroke)
+ 
+# Train the Naive Bayes model on the training set
+Naive_Bayes_model <- naive_bayes(x = train_os[, -10], # Excluding the target column
+                                  y = train_os$stroke,
+                                  laplace = 1)
+ 
+# Predict probabilities on the test set
+test_pred_prob <- predict(Naive_Bayes_model, newdata = test_os[, -10], type = "prob")
+ 
+# Create prediction object
+pred_obj <- prediction(test_pred_prob[, "1"], test_os$stroke)
+ 
+# Calculate performance measures
+perf <- performance(pred_obj, "tpr", "fpr")
+auc <- performance(pred_obj, "auc")
+ 
+# Plot ROC curve
+plot(perf, main = "ROC Curve - Naive Bayes Model Oversampled (Laplace = 1)")
+abline(a = 0, b = 1, lty = 2)  # Diagonal line representing random classifier
+ 
+# Print AUC
+print(paste("AUC (Laplace = 1):", as.numeric(auc@y.values)))
+```
+
